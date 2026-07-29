@@ -1,0 +1,74 @@
+{
+  "name": "kirby-lens",
+  "displayName": "Kirby Lens",
+  "description": "Completion, checks and navigation for Kirby projects.",
+  "version": "0.1.31",
+  "publisher": "medienbaecker",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/medienbaecker/kirby-lens.git"
+  },
+  "homepage": "https://github.com/medienbaecker/kirby-lens",
+  "bugs": {
+    "url": "https://github.com/medienbaecker/kirby-lens/issues"
+  },
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#212020",
+    "theme": "dark"
+  },
+  "keywords": [
+    "kirby",
+    "getkirby",
+    "kirbycms",
+    "php",
+    "blueprints",
+    "snippets",
+    "intellisense"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:php",
+    "workspaceContains:site/blueprints"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Kirby Lens",
+      "properties": {
+        "kirbyLens.manifest": {
+          "type": "string",
+          "default": "site/cache/kirby-lens/manifest.json",
+          "description": "Workspace-relative path to the generated snippet manifest."
+        },
+        "kirbyLens.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report argument values that are not in the documented set."
+        },
+        "kirbyLens.php": {
+          "type": "string",
+          "default": "php",
+          "description": "PHP binary used to read the project. Set an absolute path when php is not on the PATH VS Code inherits, for example with Herd or Docker."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node tests/test.js && node tests/behaviour.js && node tests/smoke.js",
+    "verify": "node tests/verify.js",
+    "verify:all": "node tests/verify.js --all",
+    "corpus": "node tests/corpus.js",
+    "types": "node tests/types.js",
+    "host": "node tests/host/run.js",
+    "intelephense": "node tests/intelephense.js",
+    "check": "node tests/check.js"
+  }
+}

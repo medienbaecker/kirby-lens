@@ -1,0 +1,11 @@
+# Ships: extension.js, analyze.js, scanner.js, php/, images/icon.png.
+# Everything below is verification or development. TODO.md names real projects
+# and is planning rather than documentation, so it is not the Marketplace's.
+tests/
+project.js
+TODO.md
+CLAUDE.md
+images/icon.py
+.editorconfig
+.gitignore
+.vscodeignore

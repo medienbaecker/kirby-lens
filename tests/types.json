@@ -1,0 +1,7 @@
+{
+	"testbed": {
+		"site/templates/demo.php:491": "\\Kirby\\Cms\\Page",
+		"site/templates/demo.php:762": "\\Kirby\\Cms\\Page",
+		"site/templates/demo.php:3273": "\\Kirby\\Http\\Request"
+	}
+}

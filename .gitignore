@@ -1,0 +1,36 @@
+# os
+.DS_Store
+
+# editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# composer
+composer.lock
+vendor/
+
+# Node
+node_modules/
+.pnpm-store/
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# working notes, not the repository's business
+CLAUDE.md
+TODO.md
+
+# anything describing a real project: paths, layouts, field names
+tests/corpus.local.json
+tests/types.local.json
+
+# extension builds
+*.vsix
+
+# written by tests/intelephense.js on every run
+tests/intelephense/project/kirby
+tests/intelephense/project/.kirby/types.php
+tests/intelephense/project/site/templates/note.php

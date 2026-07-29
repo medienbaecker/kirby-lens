@@ -1,0 +1,11 @@
+{
+	"testbed": {
+		"expect": [
+			"site/templates/demo.php: \"labl\" is not a documented parameter of components/button.",
+			"site/templates/demo.php: \"otulined\" is not a valid variant. Expected: filled, outlined, text.",
+			"site/templates/demo.php: Field or method \"headlien\" not found.",
+			"site/templates/demo.php: Field or method \"vaue\" not found.",
+			"site/templates/demo.php: Snippet \"meow\" not found. Did you mean \"menu\"?"
+		]
+	}
+}

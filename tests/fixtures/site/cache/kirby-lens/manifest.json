@@ -1,0 +1,44 @@
+{
+    "components/button": {
+        "summary": "",
+        "params": {
+            "label": {
+                "type": "string|null",
+                "description": "",
+                "injected": false,
+                "required": false,
+                "values": [],
+                "scalar": true
+            },
+            "variant": {
+                "type": "'filled'|'outlined'|'text'|null",
+                "description": "",
+                "injected": false,
+                "required": false,
+                "values": [
+                    "filled",
+                    "outlined",
+                    "text"
+                ],
+                "scalar": true
+            }
+        }
+    },
+    "components/image": {
+        "summary": "",
+        "params": {
+            "file": {
+                "type": "\\\\Kirby\\\\Cms\\\\File",
+                "description": "The image to render",
+                "injected": false,
+                "required": true,
+                "values": [],
+                "scalar": false
+            }
+        }
+    },
+    "header": {
+        "summary": "",
+        "params": []
+    }
+}
