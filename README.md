@@ -2,6 +2,8 @@
 
 My attempt at getting better code completion, checks and navigation for [Kirby](https://getkirby.com/) projects in VSCode by letting Claude read the source code.
 
+<img width="1967" height="1014" alt="Screenshot of VSCode auto-suggesting a variant of a button component: filled or outlined." src="https://github.com/user-attachments/assets/2bd35eaf-970a-4611-88dc-87b1d702a6ac" />
+
 It boots Kirby to see what exists, so plugin-registered blueprints, fields, methods and tags are all known.
 
 ## Features
