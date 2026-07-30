@@ -565,7 +565,7 @@ function refreshDiagnostics(document, collection) {
 		? diagnoseBlockLabels(text, manifest, file)
 		: [
 				...(own === true ? diagnose(text, manifest) : []),
-				...(own === true ? diagnoseFields(text, manifest) : []),
+				...(own === true ? diagnoseFields(text, manifest, file) : []),
 				...diagnoseTranslations(text, manifest),
 				...diagnoseCollections(text, manifest)
 			].sort((a, b) => a.start - b.start)
@@ -729,7 +729,7 @@ async function refreshTypes(document, collection) {
 	const text = document.getText();
 	const found = new Map();
 
-	for (const problem of diagnoseFields(text, manifest)) {
+	for (const problem of diagnoseFields(text, manifest, file)) {
 		if (problem.receiver == null || found.has(problem.receiver.name) === true) {
 			continue;
 		}
@@ -779,6 +779,10 @@ function watchSnippets(context, done) {
 		snippets: "**/*.php",
 		languages: "**/*.php",
 		collections: "**/*.php",
+		// Which models can render a file is the two of these together, and the
+		// check that reads it arms the moment a model is added
+		models: "**/*.php",
+		templates: "**/*.php",
 		blueprints: "**/*.{yml,yaml}"
 	};
 

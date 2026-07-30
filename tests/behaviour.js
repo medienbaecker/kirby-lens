@@ -908,6 +908,87 @@ check("accepts a real Kirby method", () => {
 	assert.deepStrictEqual(diagnoseFields("<?php echo $page->children();", M), []);
 });
 
+/* ------------------------------------------------------------------ */
+/* Page model methods                                                  */
+/* ------------------------------------------------------------------ */
+
+// An article page has no template of its own, so it renders default.php and
+// reaches every snippet that does. FormPage is a package's, and headline is a
+// field as well as a method.
+const SCOPED = {
+	...M,
+	packages: ["site/plugins/kirby-dreamform"],
+	pageModels: {
+		DefaultPage: {
+			name: "DefaultPage",
+			file: "site/models/default.php",
+			methods: ["seotitle", "coverimage", "headline"]
+		},
+		ArticlePage: { name: "ArticlePage", file: "site/models/article.php", methods: [] },
+		FormPage: {
+			name: "FormPage",
+			file: "site/plugins/kirby-dreamform/models/FormPage.php",
+			methods: ["coverimage"]
+		}
+	},
+	renders: {
+		"site/templates/default.php": ["ArticlePage", "DefaultPage"],
+		"site/snippets/head.php": ["ArticlePage", "DefaultPage"],
+		"site/templates/note.php": ["DefaultPage"],
+		"site/snippets/aside.php": ["DefaultPage", "FormPage"]
+	}
+};
+
+// coverimage is in the flat method list, so this is the scope overruling it
+check("flags a model method one of the file's models does not provide", () => {
+	const r = diagnoseFields("<?php echo $page->coverImage();", SCOPED, "site/snippets/head.php");
+
+	assert.deepStrictEqual(msgs(r), ['Field or method "coverImage" not found on ArticlePage.']);
+});
+
+check("and stays quiet where every model provides it", () => {
+	assert.deepStrictEqual(
+		diagnoseFields("<?php echo $page->coverImage();", SCOPED, "site/templates/note.php"),
+		[]
+	);
+});
+
+// The flat list is what answers wherever the models are not known, which is
+// every caller that passes no file and every file no template reaches
+check("a file with no models keeps the flat list", () => {
+	assert.deepStrictEqual(diagnoseFields("<?php echo $page->coverImage();", SCOPED), []);
+	assert.deepStrictEqual(
+		diagnoseFields("<?php echo $page->coverImage();", SCOPED, "site/snippets/blocks/card.php"),
+		[]
+	);
+});
+
+// A package's model is not the author's to change, the same axis ownCode uses
+check("a package's model narrows nothing", () => {
+	assert.deepStrictEqual(
+		diagnoseFields("<?php echo $page->coverImage();", SCOPED, "site/snippets/aside.php"),
+		[]
+	);
+});
+
+// scanMethods does not track receivers, so anything but $page could be a child
+// of another type entirely and the scope says nothing about it
+check("only $page is scoped", () => {
+	assert.deepStrictEqual(
+		diagnoseFields("<?php echo $article->coverImage();", SCOPED, "site/snippets/head.php"),
+		[]
+	);
+});
+
+// A model method and a field can share a name, and the field is what the call
+// resolves to on a model that has no such method
+check("a name that is also a field is left alone", () => {
+	assert.deepStrictEqual(
+		diagnoseFields("<?php echo $page->headline();", SCOPED, "site/snippets/head.php"),
+		[]
+	);
+});
+
 // PHP method names are case-insensitive and Content::get() lowercases keys
 check("comparison ignores case", () => {
 	assert.deepStrictEqual(diagnoseFields("<?php echo $page->Headline();", M), []);

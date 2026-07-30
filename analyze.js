@@ -1010,7 +1010,7 @@ function contentFields(manifest, scope = null) {
  * `$page->headlien()` returns an empty Field and renders nothing, with no
  * error even under debug.
  */
-function diagnoseFields(text, manifest) {
+function diagnoseFields(text, manifest, file) {
 	const union = manifest.fields?.union;
 	const methods = manifest.methods;
 
@@ -1019,25 +1019,94 @@ function diagnoseFields(text, manifest) {
 		return [];
 	}
 
-	const known = new Set([
+	const fields = new Set([
 		...Object.keys(union),
 		...Object.keys(contentFields(manifest)),
 		// Reachable only on a structure item, so completion never offers them
-		...Object.keys(isMap(manifest.structures) === true ? manifest.structures : {}),
-		...methods
+		...Object.keys(isMap(manifest.structures) === true ? manifest.structures : {})
 	]);
 
+	const known = new Set([...fields, ...methods]);
+	const missing = missingModelMethods(manifest, file);
+
 	return scanMethods(text)
-		.filter((call) => known.has(call.name.toLowerCase()) === false)
-		.map((call) => ({
-			start: call.start,
-			end: call.end,
-			// Carried so a caller that can resolve types may drop the ones whose
-			// receiver is not a model at all. Nothing here resolves anything.
-			receiver: call.receiver,
-			message: `Field or method "${call.name}" not found.`,
-			severity: "warning"
-		}));
+		.map((call) => {
+			const name = call.name.toLowerCase();
+
+			// A model method is the one name whose answer is per file rather
+			// than per project, so the models that can render this one decide
+			// even though the flat list holds the name
+			const lacking =
+				call.receiver?.name === "$page" && fields.has(name) === false
+					? missing.get(name)
+					: undefined;
+
+			if (lacking === undefined && known.has(name) === true) {
+				return null;
+			}
+
+			return {
+				start: call.start,
+				end: call.end,
+				// Carried so a caller that can resolve types may drop the ones whose
+				// receiver is not a model at all. Nothing here resolves anything.
+				receiver: call.receiver,
+				message:
+					lacking === undefined
+						? `Field or method "${call.name}" not found.`
+						: `Field or method "${call.name}" not found on ${lacking.join(", ")}.`,
+				severity: "warning"
+			};
+		})
+		.filter((problem) => problem !== null);
+}
+
+/**
+ * Model methods a file may not call, mapped to the models that lack them.
+ *
+ * `$page` is whichever model renders the file, and a snippet included by two
+ * templates is both of them, so a method is safe only where every one of them
+ * provides it. A file no template reaches, a model shipped by a package and a
+ * manifest with none of this answer nothing, which leaves the flat list in
+ * charge exactly as before.
+ */
+function missingModelMethods(manifest, file) {
+	const models = manifest.pageModels;
+	const found = new Map();
+
+	if (isMap(models) === false || file === undefined) {
+		return found;
+	}
+
+	const own = (name) =>
+		isMap(models[name]) === true &&
+		ownCode(models[name].file ?? "", manifest.roots, manifest.packages) === true;
+
+	const scope = (manifest.renders?.[String(file).replace(/\\/g, "/")] ?? []).filter(own);
+
+	if (scope.length === 0) {
+		return found;
+	}
+
+	const provides = (name, method) => (models[name]?.methods ?? []).includes(method) === true;
+
+	// Every method the project's own models declare, so a name no model of its
+	// own provides is left to the flat list
+	const declared = new Set(
+		Object.keys(models)
+			.filter(own)
+			.flatMap((name) => models[name].methods ?? [])
+	);
+
+	for (const method of declared) {
+		const lacking = scope.filter((name) => provides(name, method) === false);
+
+		if (lacking.length > 0) {
+			found.set(method, lacking.map((name) => models[name].name ?? name));
+		}
+	}
+
+	return found;
 }
 
 /**

@@ -95,6 +95,8 @@ final readonly class Manifest
 				'content'  => $content['scopes'],
 				'structures' => $content['structures'],
 				'models'   => $this->models(),
+				'pageModels' => $this->pageModels(),
+				'renders'  => $this->renders($content['scopes']),
 				'methods'  => $this->methods(),
 				'fieldMethods' => $this->fieldMethods(),
 				'fieldTypes'   => $this->fieldTypes()
@@ -563,6 +565,197 @@ final readonly class Manifest
 		sort($found);
 
 		return $found;
+	}
+
+	/**
+	 * Each page model, the file that declares it and the methods it adds to a
+	 * Kirby page.
+	 *
+	 * Separate from `methods`, which is one flat list on purpose: whether
+	 * `$page->seoTitle()` resolves depends on which model renders the page, and
+	 * that answer is per file rather than per project.
+	 */
+	public function pageModels(): array
+	{
+		$base  = array_map('strtolower', get_class_methods(\Kirby\Cms\Page::class));
+		$found = [];
+
+		foreach ($this->pageModelClasses() as $class) {
+			if (isset($found[$class]) === true) {
+				continue;
+			}
+
+			$file = (new \ReflectionClass($class))->getFileName();
+
+			$found[$class] = [
+				// Kirby builds the class name from the file name, so the
+				// registry answers `articlePage` for a `class ArticlePage`
+				'name'    => (new \ReflectionClass($class))->getShortName(),
+				'file'    => is_string($file) === true ? $this->relative($file) : null,
+				'methods' => array_values(array_diff(
+					array_map('strtolower', get_class_methods($class)),
+					$base
+				))
+			];
+		}
+
+		ksort($found);
+
+		return $found;
+	}
+
+	/**
+	 * Which page models can render each file, templates and the snippets they
+	 * reach.
+	 *
+	 * A page renders the template matching its own name and falls back to
+	 * `default.php` when there is none, still as its own model, which is what
+	 * puts a model with no template of its own into the default template's set.
+	 *
+	 * Only literal `snippet()` names are followed. Missing an edge narrows a
+	 * file's set and so reports less, while inventing one would report more, so
+	 * the loose end of this scan is the safe one.
+	 */
+	public function renders(array $scopes): array
+	{
+		$models    = $this->pageModelClasses();
+		$templates = $this->templateFiles();
+		$found     = [];
+
+		$names = array_unique([
+			...array_keys($models),
+			...array_keys($templates),
+			...$this->rendered($scopes)
+		]);
+
+		foreach ($names as $name) {
+			$file = $templates[$name] ?? $templates['default'] ?? null;
+
+			if ($file === null) {
+				continue;
+			}
+
+			// A page with no model of its own is a plain Kirby page, which
+			// provides no model method at all and must say so
+			$class = $models[$name] ?? $models['default'] ?? \Kirby\Cms\Page::class;
+
+			foreach ($this->reach($file) as $reached) {
+				$found[$reached][$class] = true;
+			}
+		}
+
+		$renders = [];
+
+		foreach ($found as $file => $classes) {
+			$classes = array_keys($classes);
+			sort($classes);
+
+			$renders[$this->relative($file)] = $classes;
+		}
+
+		ksort($renders);
+
+		return $renders;
+	}
+
+	/**
+	 * Page model classes by the template name they answer for.
+	 */
+	private function pageModelClasses(): array
+	{
+		$found = [];
+
+		foreach ($this->kirby->extensions('pageModels') as $name => $class) {
+			if (is_string($class) === true && class_exists($class) === true) {
+				// The registry answers whatever case the file name produced;
+				// reflection answers what the class was declared as
+				$found[$name] = (new \ReflectionClass($class))->getName();
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * Template names mapped to the file that renders them, rather than to the
+	 * bare names `templates()` collects.
+	 */
+	private function templateFiles(): array
+	{
+		$found = [];
+		$root  = $this->kirby->root('templates');
+
+		foreach (Dir::index($root, true) as $path) {
+			if (F::extension($path) !== 'php') {
+				continue;
+			}
+
+			// A representation sits beside its template as `feed.rss.php`, and
+			// `Dir::index` sorts `feed.php` ahead of it
+			$name = substr($path, 0, -4);
+			$found[strstr($name, '.', true) ?: $name] ??= $root . '/' . $path;
+		}
+
+		foreach ($this->kirby->extensions('templates') as $name => $path) {
+			if (is_string($path) === true && str_starts_with($path, $this->kirby->root('kirby')) === false) {
+				$found[$name] ??= $path;
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * The template names real pages carry, read out of the content scan so a
+	 * model registered for a template nobody uses stays out of it.
+	 */
+	private function rendered(array $scopes): array
+	{
+		$found = [];
+
+		foreach (array_keys($scopes) as $scope) {
+			if (str_starts_with((string) $scope, 'pages/') === true) {
+				$found[] = substr($scope, 6);
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * A file and every snippet it can reach.
+	 */
+	private function reach(string $file): array
+	{
+		$seen  = [$file => true];
+		$queue = $this->calls($file);
+
+		while ($queue !== []) {
+			$snippet = $this->files[array_pop($queue)] ?? null;
+
+			if ($snippet === null || isset($seen[$snippet]) === true) {
+				continue;
+			}
+
+			$seen[$snippet] = true;
+			$queue = [...$queue, ...$this->calls($snippet)];
+		}
+
+		return array_keys($seen);
+	}
+
+	/**
+	 * The literal snippet names a file renders.
+	 */
+	private function calls(string $file): array
+	{
+		preg_match_all(
+			'#\bsnippet\(\s*([\'"])([\w\-/]+)\1#',
+			is_file($file) === true ? (F::read($file) ?: '') : '',
+			$matches
+		);
+
+		return $matches[2];
 	}
 
 	/**
