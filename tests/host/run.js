@@ -18,7 +18,11 @@ const os = require("node:os");
 const path = require("node:path");
 
 const APP = "/Applications/Visual Studio Code.app";
-const CODE = path.join(APP, "Contents/MacOS/Electron");
+// VS Code renamed this from Electron to Code, and the skip that costs is
+// silent: the whole host layer simply stops running
+const CODE = ["Code", "Electron"]
+	.map((name) => path.join(APP, "Contents/MacOS", name))
+	.find((file) => fs.existsSync(file)) ?? path.join(APP, "Contents/MacOS/Code");
 // Any project, not only the testbed. A bug reported in someone's own site is
 // answerable by running the real host against that site rather than by
 // reasoning about how it differs from the fixture.
