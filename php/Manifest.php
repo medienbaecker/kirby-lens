@@ -447,6 +447,18 @@ final readonly class Manifest
 			);
 		}
 
+		// A standalone field blueprint does not name itself: whoever includes it
+		// decides that, so `fields/title.yml` declares no field called `title`.
+		// What it does declare is its own sub-fields, which is why only what it
+		// nests counts and its own keys, `type` and `empty` and the rest, never
+		// do. Reached here rather than through a model because a library field
+		// nothing includes yet is in no page blueprint at all.
+		foreach ($this->kirby->blueprints('fields') as $name) {
+			yield 'fields/' . $name => $this->resolve(
+				fn () => \Kirby\Cms\Blueprint::find('fields/' . $name)['fields'] ?? []
+			);
+		}
+
 		foreach ($this->kirby->blueprints('files') as $name) {
 			yield 'files/' . $name => $this->resolve(
 				fn () => \Kirby\Cms\File::factory([

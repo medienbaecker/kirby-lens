@@ -129,6 +129,26 @@ check('a template with no blueprint of its own still resolves', function (): str
 	return is_array($fields) ? null : 'Page::blueprint() no longer falls back';
 });
 
+// A field blueprint nothing includes is in no page blueprint, so this is the
+// only way its sub-fields are ever seen. Both halves fail quietly: a renamed
+// blueprint type answers an empty list, and a find() that stopped resolving
+// `extends` answers a blueprint with no fields.
+check('a standalone field blueprint is still listed and findable', function () use ($kirby): string|null {
+	$names = $kirby->blueprints('fields');
+
+	if (is_array($names) === false) {
+		return "blueprints('fields') no longer lists field blueprints";
+	}
+
+	if ($names === []) {
+		return null;
+	}
+
+	$found = \Kirby\Cms\Blueprint::find('fields/' . reset($names));
+
+	return is_array($found) ? null : 'Blueprint::find() no longer answers an array';
+});
+
 check('block fieldsets still expand from a plain name list', function () use ($kirby): string|null {
 	$fieldsets = \Kirby\Cms\Fieldsets::factory($kirby->blueprints('blocks'));
 
