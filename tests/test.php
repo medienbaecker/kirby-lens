@@ -82,6 +82,24 @@ check('escaped quote inside a literal', "<?php\n/**\n * @var 'it\\'s'|'other'|nu
 check('inline @var later is not merged', "<?php\n/**\n * @var string|null \$a\n */\n\$x = 1;\n/** @var \\Kirby\\Cms\\Page \$p */\n", ['a' => 'string|null']);
 check('class type', "<?php\n/**\n * @var \\Kirby\\Cms\\File \$a\n */\n", ['a' => '\\Kirby\\Cms\\File !']);
 
+// No corpus project writes the shorthand, so these are the only cover it has
+check('nullable shorthand is optional', "<?php\n/**\n * @var ?string \$a\n */\n", ['a' => '?string']);
+check('nullable shorthand keeps its literals', "<?php\n/**\n * @var ?'x'|'y' \$a\n */\n", ['a' => "?'x'|'y' x,y"]);
+
+foreach ([['?string', 'string|null'], ['?bool', 'bool|null'], ['?int', 'int|null']] as [$short, $union]) {
+	$name = "{$short} answers as {$union}";
+	$a = new Medienbaecker\KirbyLens\Type($short);
+	$b = new Medienbaecker\KirbyLens\Type($union);
+
+	if ($a->parts() === $b->parts() && $a->acceptsString() === $b->acceptsString()) {
+		$pass++;
+		echo "  ok   {$name}\n";
+	} else {
+		$fail++;
+		echo "  FAIL {$name}\n       " . json_encode($a->parts()) . " vs " . json_encode($b->parts()) . "\n";
+	}
+}
+
 // Injected variables stay in the manifest so a call site passing one is not
 // reported as undocumented, but Kirby supplies them so they are never required
 check(

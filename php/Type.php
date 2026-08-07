@@ -10,7 +10,10 @@ final readonly class Type
 	public function __construct(public string $doc) {}
 
 	/**
-	 * Splits the union on `|`, ignoring pipes inside quoted literals.
+	 * Splits the union on `|`, ignoring pipes inside quoted literals. `?string`
+	 * expands to both halves, so the shorthand and the written-out union answer
+	 * alike: read as one part it is neither `null` nor `string`, which makes an
+	 * optional parameter required and a string value illegal.
 	 */
 	public function parts(): array
 	{
@@ -41,7 +44,23 @@ final readonly class Type
 
 		$parts[] = trim($current);
 
-		return array_values(array_filter($parts, fn (string $part): bool => $part !== ''));
+		$expanded = [];
+
+		foreach ($parts as $part) {
+			if ($part === '') {
+				continue;
+			}
+
+			if (str_starts_with($part, '?') === true) {
+				$expanded[] = substr($part, 1);
+				$expanded[] = 'null';
+				continue;
+			}
+
+			$expanded[] = $part;
+		}
+
+		return array_values(array_unique($expanded));
 	}
 
 	public function isRequired(): bool
