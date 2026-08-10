@@ -27,11 +27,16 @@ const CODE = ["Code", "Electron"]
 // answerable by running the real host against that site rather than by
 // reasoning about how it differs from the fixture.
 //   node host/run.js ~/Work/Projects/some-site site/blueprints/fields/image.yml
+//
+// `--project` in place of a file runs the whole-project command against that
+// workspace and nothing else, which is the one mode that needs Intelephense:
+//   node host/run.js ~/Work/Projects/some-site --project
 const WORKSPACE = process.argv[2]
 	? path.resolve(process.argv[2].replace(/^~/, os.homedir()))
 	: path.join(os.homedir(), "Work/Projects/test-snippy");
 
-const PROBE = process.argv[3] ?? "";
+const MODE = process.argv[3] === "--project" ? "project" : "";
+const PROBE = MODE === "" ? (process.argv[3] ?? "") : "";
 const REPORT = path.join(os.tmpdir(), "lens-host-report.json");
 
 // A macOS unix socket path caps out around 104 bytes and VS Code puts one
@@ -54,14 +59,16 @@ fs.rmSync(REPORT, { force: true });
 // LaunchServices, which does not carry one
 fs.writeFileSync(
 	path.join(os.tmpdir(), "lens-host-probe.json"),
-	JSON.stringify({ workspace: WORKSPACE, probe: PROBE })
+	JSON.stringify({ workspace: WORKSPACE, probe: PROBE, mode: MODE })
 );
 
 const args = [
 	`--extensionDevelopmentPath=${path.join(__dirname, "../..")}`,
 	`--extensionTestsPath=${path.join(__dirname, "suite.js")}`,
 	`--user-data-dir=${USER_DATA}`,
-	"--disable-extensions",
+	// Kept off for --project: the type filter is Intelephense's answer, so
+	// disabling extensions there would test a check that suppresses nothing
+	...(MODE === "project" ? [] : ["--disable-extensions"]),
 	"--disable-gpu",
 	WORKSPACE
 ];

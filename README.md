@@ -42,6 +42,8 @@ Quick fixes correct a name, create a missing snippet, or add a type hint.
 
 Only your own code is checked, plugins included, but not the ones you installed. Where Intelephense knows a variable isn't a Kirby object, `$cli->arg()` and the like are left alone.
 
+Problems appear for the files you have open. For everything at once, run **Kirby Lens: Check whole project** from the command palette. The results stay until you run it again; files you open or edit keep correcting themselves.
+
 ### Navigation
 
 - **Cmd-click** a snippet name, a translation key, or `extends:` and `fieldsets:` in a blueprint

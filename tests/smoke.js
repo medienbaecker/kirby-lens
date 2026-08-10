@@ -37,7 +37,8 @@ function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
 		command: null,
 		warnings: [],
 		asked: [],
-		commands: 0
+		commands: 0,
+		registered: []
 	};
 	const noop = () => ({ dispose() {} });
 
@@ -55,6 +56,10 @@ function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
 			executeCommand: async () => {
 				seen.commands++;
 				return [];
+			},
+			registerCommand: (id) => {
+				seen.registered.push(id);
+				return { dispose() {} };
 			}
 		},
 		workspace: {
@@ -190,6 +195,10 @@ check("activates with a manifest present", () => {
 
 	// Asked, absent, so nothing was resolved and nothing is suppressed
 	assert.strictEqual(seen.commands, 0);
+
+	// A command contributed in package.json but never registered is a palette
+	// entry that errors when picked
+	assert.deepStrictEqual(seen.registered, ["kirbyLens.checkProject"]);
 });
 
 check("activates with the manifest missing, and rebuilds it", () => {

@@ -130,6 +130,66 @@ async function probe(relative) {
 	pass++;
 }
 
+const ours = () =>
+	vscode.languages
+		.getDiagnostics()
+		.map(([uri, list]) => [uri, list.filter((d) => d.source === "kirby-lens")])
+		.filter(([, list]) => list.length > 0);
+
+/**
+ * The whole-project command, against any project rather than the fixture.
+ *
+ * Runs with extensions enabled, unlike the main suite, because the type filter
+ * that keeps the count honest is Intelephense's answer and nothing else.
+ *
+ *   node tests/host/run.js ~/Work/Projects/some-site --project
+ */
+async function projectCheck() {
+	await check("the command is registered", async () => {
+		const all = await vscode.commands.getCommands(true);
+		assert.ok(all.includes("kirbyLens.checkProject"), "kirbyLens.checkProject is not registered");
+	});
+
+	// registerCommand hands back the callback's promise, so this resolves when
+	// the scan is done rather than when it starts
+	await vscode.commands.executeCommand("kirbyLens.checkProject");
+	await wait(500);
+
+	const published = ours();
+
+	await check("publishes for files nothing opened", () => {
+		assert.ok(
+			published.length > 0,
+			"this project reports nothing, so publishing cannot be observed. Point --project at one that has findings."
+		);
+
+		assert.strictEqual(
+			vscode.window.visibleTextEditors.length,
+			0,
+			"the check showed an editor"
+		);
+	});
+
+	// The close handler drops a URI's diagnostics, and VS Code closes the
+	// documents the check opened. Without the scan-owned set this passes on the
+	// line above and the panel is empty a moment later.
+	await check("survives the document being closed", async () => {
+		const [uri] = published[0];
+		const document = await vscode.workspace.openTextDocument(uri);
+
+		await vscode.window.showTextDocument(document);
+		await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+		await wait(1500);
+
+		assert.ok(
+			ours().some(([other]) => other.toString() === uri.toString()),
+			uri.fsPath + " lost its diagnostics when the document closed"
+		);
+	});
+
+	lines.push("  info  " + published.length + " files carry a finding");
+}
+
 async function suite() {
 	const extension = vscode.extensions.getExtension("medienbaecker.kirby-lens");
 	assert.ok(extension, "extension not present in the host");
@@ -141,6 +201,11 @@ async function suite() {
 
 	if (config.probe) {
 		await probe(config.probe);
+		return;
+	}
+
+	if (config.mode === "project") {
+		await projectCheck();
 		return;
 	}
 

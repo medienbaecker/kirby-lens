@@ -594,6 +594,117 @@ function refreshDiagnostics(document, collection) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Whole project                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Files the last whole-project check published for.
+ *
+ * Closing a document normally drops its diagnostics, and a document opened by
+ * the check is closed by VS Code the moment it stops being referenced. Without
+ * this the panel fills and then empties again on its own.
+ */
+const scanned = new Set();
+
+/**
+ * Everything the checks read, as workspace-relative globs. Narrow rather than
+ * one recursive glob over the workspace, because that walks `kirby/` and
+ * `vendor/`, which is most of a project's files and none of its own code.
+ */
+function projectGlobs(root) {
+	const globs = new Set(["site/**/*.php"]);
+
+	const add = (name, extensions) => {
+		const dir = rootPath(name);
+		const relative = dir === null ? "" : path.relative(root, dir);
+
+		if (relative !== "" && relative.startsWith("..") === false) {
+			globs.add(relative.split(path.sep).join("/") + "/**/*." + extensions);
+		}
+	};
+
+	for (const name of ["snippets", "templates", "controllers", "models"]) {
+		add(name, "php");
+	}
+
+	add("blueprints", "{yml,yaml}");
+
+	return [...globs];
+}
+
+async function checkProject(collection) {
+	const root = workspaceRoot();
+
+	if (root === null || isKirbyProject(root) === false) {
+		vscode.window.showWarningMessage("Kirby Lens: no Kirby project in this workspace.");
+		return;
+	}
+
+	if (config("diagnostics") === false) {
+		vscode.window.showWarningMessage(
+			"Kirby Lens: diagnostics are turned off. Set kirbyLens.diagnostics to true."
+		);
+		return;
+	}
+
+	const found = new Map();
+
+	for (const glob of projectGlobs(root)) {
+		for (const uri of await vscode.workspace.findFiles(glob, "**/vendor/**")) {
+			found.set(uri.toString(), uri);
+		}
+	}
+
+	const files = [...found.values()];
+
+	await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: "Kirby Lens: checking project",
+			cancellable: true
+		},
+		async (progress, token) => {
+			for (const key of scanned) {
+				collection.delete(vscode.Uri.parse(key));
+			}
+
+			scanned.clear();
+
+			for (const [index, uri] of files.entries()) {
+				if (token.isCancellationRequested === true) {
+					return;
+				}
+
+				progress.report({
+					message: `${index + 1}/${files.length}`,
+					increment: 100 / files.length
+				});
+
+				const document = await vscode.workspace.openTextDocument(uri);
+
+				// Never shown: loading the document is enough for the language
+				// server to answer about it, measured against a real host
+				refreshDiagnostics(document, collection);
+				await refreshTypes(document, collection);
+
+				scanned.add(uri.toString());
+			}
+		}
+	);
+
+	const total = vscode.languages
+		.getDiagnostics()
+		.flatMap(([, list]) => list)
+		.filter((diagnostic) => diagnostic.source === "kirby-lens").length;
+
+	vscode.window.showInformationMessage(
+		total === 0
+			? `Kirby Lens: no problems in ${files.length} files.`
+			: `Kirby Lens: ${total} problem${total === 1 ? "" : "s"} in ${files.length} files.`
+	);
+}
+
+/* ------------------------------------------------------------------ */
 
 function activate(context) {
 	loadManifest();
@@ -626,7 +737,8 @@ function activate(context) {
 			providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
 		}),
 		vscode.languages.registerRenameProvider(php, renames),
-		vscode.languages.registerInlayHintsProvider(php, previews)
+		vscode.languages.registerInlayHintsProvider(php, previews),
+		vscode.commands.registerCommand("kirbyLens.checkProject", () => checkProject(collection))
 	);
 
 	const file = manifestPath();
@@ -666,7 +778,10 @@ function activate(context) {
 			laterTypes(event.document);
 		}),
 		vscode.workspace.onDidCloseTextDocument((document) => {
-			collection.delete(document.uri);
+			if (scanned.has(document.uri.toString()) === false) {
+				collection.delete(document.uri);
+			}
+
 			types.delete(document.uri.toString());
 		})
 	);

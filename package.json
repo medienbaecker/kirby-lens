@@ -2,7 +2,7 @@
   "name": "kirby-lens",
   "displayName": "Kirby Lens",
   "description": "Completion, checks and navigation for Kirby projects.",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "publisher": "medienbaecker",
   "license": "MIT",
   "repository": {
@@ -40,6 +40,13 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "kirbyLens.checkProject",
+        "title": "Check whole project",
+        "category": "Kirby Lens"
+      }
+    ],
     "configuration": {
       "title": "Kirby Lens",
       "properties": {
