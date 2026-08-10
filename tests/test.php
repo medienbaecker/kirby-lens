@@ -136,6 +136,30 @@ check(
 	['a' => 'string|null', 'b' => 'string']
 );
 
+// Composer's `scrivo/highlight.php` is a package, so a real project can hold a
+// directory that passes an extension check and then dies on the read
+Dir::make($dir . '/highlight.php');
+file_put_contents($dir . '/highlight.php/inner.php', "<?php\n");
+
+$name = 'a directory named like a PHP file is not a snippet';
+
+try {
+	$snippets = (new Manifest($kirby))->snippets();
+	$problem = in_array('highlight', $snippets, true) === true
+		? 'listed the directory as a snippet'
+		: null;
+} catch (\Throwable $exception) {
+	$problem = $exception->getMessage();
+}
+
+if ($problem === null) {
+	$pass++;
+	echo "  ok   {$name}\n";
+} else {
+	$fail++;
+	echo "  FAIL {$name}\n       {$problem}\n";
+}
+
 Dir::remove($dir);
 
 echo "\n{$pass} passed, {$fail} failed\n";

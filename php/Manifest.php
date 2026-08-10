@@ -309,6 +309,27 @@ final readonly class Manifest
 	 * the real structure beside it, which is hand-written and carries `footer`
 	 * on its first row only. Panel-less content is not uniform.
 	 */
+	/**
+	 * Relative paths of the real PHP files under a root.
+	 *
+	 * `Dir::index` lists directories as well, and an extension check does not
+	 * tell them apart: Composer's `scrivo/highlight.php` is a package, so
+	 * `vendor/scrivo/highlight.php` is a directory that passes for a PHP file
+	 * and then fails the read with "Is a directory".
+	 */
+	private function phpFiles(string $root): array
+	{
+		$found = [];
+
+		foreach (Dir::index($root, true) as $path) {
+			if (F::extension($path) === 'php' && is_file($root . '/' . $path) === true) {
+				$found[] = $path;
+			}
+		}
+
+		return $found;
+	}
+
 	private function structural(): array
 	{
 		$found = [];
@@ -320,16 +341,10 @@ final readonly class Manifest
 				continue;
 			}
 
-			foreach (Dir::index($dir, true) as $path) {
-				$file = $dir . '/' . $path;
-
-				if (F::extension($file) !== 'php') {
-					continue;
-				}
-
+			foreach ($this->phpFiles($dir) as $path) {
 				preg_match_all(
 					'#->\s*([a-zA-Z_]\w*)\s*\(\s*\)\s*->\s*(?:toStructure|toObject|toEntries|yaml|toData)\s*\(#',
-					(string) F::read($file),
+					(string) F::read($dir . '/' . $path),
 					$matches
 				);
 
@@ -505,11 +520,7 @@ final readonly class Manifest
 		$names = [];
 		$root = $this->kirby->root('templates');
 
-		foreach (Dir::index($root, true) as $path) {
-			if (F::extension($path) !== 'php') {
-				continue;
-			}
-
+		foreach ($this->phpFiles($root) as $path) {
 			// A representation sits beside its template as `feed.rss.php` and is
 			// not a template in its own right
 			$name = substr($path, 0, -4);
@@ -685,11 +696,7 @@ final readonly class Manifest
 		$found = [];
 		$root  = $this->kirby->root('templates');
 
-		foreach (Dir::index($root, true) as $path) {
-			if (F::extension($path) !== 'php') {
-				continue;
-			}
-
+		foreach ($this->phpFiles($root) as $path) {
 			// A representation sits beside its template as `feed.rss.php`, and
 			// `Dir::index` sorts `feed.php` ahead of it
 			$name = substr($path, 0, -4);
@@ -845,11 +852,7 @@ final readonly class Manifest
 				continue;
 			}
 
-			foreach (Dir::index($root, true) as $path) {
-				if (F::extension($path) !== 'php') {
-					continue;
-				}
-
+			foreach ($this->phpFiles($root) as $path) {
 				preg_match_all(
 					'#\bfunction\s+&?(\w+)\s*\(#',
 					F::read($root . '/' . $path) ?: '',
@@ -963,10 +966,8 @@ final readonly class Manifest
 
 		$root = $this->kirby->root('snippets');
 
-		foreach (Dir::index($root, true) as $path) {
-			if (F::extension($path) === 'php') {
-				$files[substr($path, 0, -4)] = $root . '/' . $path;
-			}
+		foreach ($this->phpFiles($root) as $path) {
+			$files[substr($path, 0, -4)] = $root . '/' . $path;
 		}
 
 		ksort($files);
@@ -1064,8 +1065,9 @@ final readonly class Manifest
 
 		$root = $this->kirby->root('languages');
 
+		// Not phpFiles(): languages are flat, and that one recurses
 		foreach (Dir::index($root) as $file) {
-			if (F::extension($file) !== 'php') {
+			if (F::extension($file) !== 'php' || is_file($root . '/' . $file) === false) {
 				continue;
 			}
 
@@ -1126,10 +1128,8 @@ final readonly class Manifest
 		$names = array_keys($this->kirby->extensions('collections'));
 		$root  = $this->kirby->root('collections');
 
-		foreach (Dir::index($root, true) as $path) {
-			if (F::extension($path) === 'php') {
-				$names[] = substr($path, 0, -4);
-			}
+		foreach ($this->phpFiles($root) as $path) {
+			$names[] = substr($path, 0, -4);
 		}
 
 		$names = array_values(array_unique($names));
