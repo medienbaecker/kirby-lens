@@ -158,9 +158,13 @@ async function main() {
 	}
 
 	if (write === true) {
-		const testbed = found.testbed === undefined ? {} : { testbed: found.testbed };
+		// A project that was skipped resolved nothing, and writing that over its
+		// recording empties a committed baseline nobody meant to touch
+		const kept = { ...recorded, ...found };
+
+		const testbed = kept.testbed === undefined ? {} : { testbed: kept.testbed };
 		const mine = Object.fromEntries(
-			Object.entries(found).filter(([name]) => name !== "testbed")
+			Object.entries(kept).filter(([name]) => name !== "testbed")
 		);
 
 		fs.writeFileSync(TYPES, JSON.stringify(testbed, null, "\t") + "\n");
