@@ -51,7 +51,7 @@
         "kirbyLens.diagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Report argument values that are not in the documented set."
+          "description": "Report problems. Turn off for completion, hover and navigation only."
         },
         "kirbyLens.php": {
           "type": "string",
