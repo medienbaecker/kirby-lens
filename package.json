@@ -2,7 +2,7 @@
   "name": "kirby-lens",
   "displayName": "Kirby Lens",
   "description": "Completion, checks and navigation for Kirby projects.",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "publisher": "medienbaecker",
   "license": "MIT",
   "repository": {

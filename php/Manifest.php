@@ -816,7 +816,7 @@ final readonly class Manifest
 
 		// Field method aliases are a separate registry from the methods, and are
 		// fully documented API: `esc` for `escape`, `bool` for `toBool`
-		$methods = [...$methods, ...array_keys(\Kirby\Content\Field::$aliases)];
+		$methods = [...$methods, ...array_keys($this->aliases())];
 
 		// Whatever the registries above still cannot reach: a helper function, a
 		// plugin class Composer autoloads only when first used, an anonymous
@@ -872,6 +872,54 @@ final readonly class Manifest
 	 *
 	 * Aliases included: `esc` and `escape` are both real to a call site.
 	 */
+	/**
+	 * Core field methods as name => arity.
+	 *
+	 * Kirby 5 registers closures from config/methods.php whose first parameter
+	 * is the field itself. Kirby 6 declares them on the Kirby\Content\FieldMethods
+	 * trait instead, where the field is `$this` and every parameter is a real
+	 * argument, so the two disagree by one and `esc` and `bool` stop being
+	 * aliases and become methods.
+	 */
+	private function coreFieldMethods(): array
+	{
+		$core = $this->kirby->core();
+		$found = [];
+
+		if (method_exists($core, 'fieldMethods') === true) {
+			foreach ($core->fieldMethods() as $name => $callback) {
+				$found[$name] = $this->arity($callback);
+			}
+
+			return $found;
+		}
+
+		if (trait_exists(\Kirby\Content\FieldMethods::class) === false) {
+			return [];
+		}
+
+		$reflection = new \ReflectionClass(\Kirby\Content\FieldMethods::class);
+
+		foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+			if (str_starts_with($method->getName(), '__') === false) {
+				$found[$method->getName()] = $method->getNumberOfParameters();
+			}
+		}
+
+		return $found;
+	}
+
+	/**
+	 * Field method aliases, which Kirby 6 does not have: `esc` and `bool` are
+	 * declared outright there, so the registry went away with them.
+	 */
+	private function aliases(): array
+	{
+		return property_exists(\Kirby\Content\Field::class, 'aliases') === true
+			? \Kirby\Content\Field::$aliases
+			: [];
+	}
+
 	public function fieldMethods(): array
 	{
 		// core()->fieldMethods() keeps the camelCase from config/methods.php;
@@ -880,8 +928,8 @@ final readonly class Manifest
 		$methods = [];
 		$lower = [];
 
-		foreach ($this->kirby->core()->fieldMethods() as $name => $callback) {
-			$methods[$name] = $lower[strtolower($name)] = $this->arity($callback);
+		foreach ($this->coreFieldMethods() as $name => $arity) {
+			$methods[$name] = $lower[strtolower($name)] = $arity;
 		}
 
 		// Kirby lowercases the registered copy, so anything already known by
@@ -896,7 +944,7 @@ final readonly class Manifest
 
 		// An alias takes whatever its target takes, unless the name is already a
 		// method in its own right: `excerpt` is both, and aliases `toExcerpt`
-		foreach (\Kirby\Content\Field::$aliases as $alias => $target) {
+		foreach ($this->aliases() as $alias => $target) {
 			if (isset($methods[$alias]) === true) {
 				continue;
 			}

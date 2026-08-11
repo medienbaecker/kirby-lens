@@ -95,7 +95,16 @@ check('every method registry is one Kirby declares', function () use ($constants
 	return $unknown === [] ? null : 'not declared by Kirby: ' . implode(', ', $unknown);
 });
 
-check('field method aliases are still readable', function (): string|null {
+// Kirby 6 declares esc() and bool() outright and drops the registry, so its
+// absence is a version and not a breakage. Reading it as one would offer every
+// alias as an unknown method.
+check('field method aliases are readable where they exist', function (): string|null {
+	if (property_exists(\Kirby\Content\Field::class, 'aliases') === false) {
+		return trait_exists(\Kirby\Content\FieldMethods::class) === true
+			? null
+			: 'no Field::$aliases and no FieldMethods trait either';
+	}
+
 	return is_array(\Kirby\Content\Field::$aliases) ? null : 'Field::$aliases is not an array';
 });
 
@@ -106,16 +115,29 @@ check('both block method registries are readable as class statics', function ():
 		: 'Block::$methods or Blocks::$methods is not an array';
 });
 
+// Kirby 6 moved these onto a trait, where they are real methods rather than
+// closures. Either way the names must arrive camel cased: the extensions copy
+// is lowercased, and lowercase labels would be wrong to offer.
 check('core field methods keep their camel case', function () use ($kirby): string|null {
-	$methods = $kirby->core()->fieldMethods();
+	$core = $kirby->core();
 
-	if (is_array($methods) === false) {
-		return 'Core::fieldMethods() no longer returns an array';
+	if (method_exists($core, 'fieldMethods') === true) {
+		$methods = $core->fieldMethods();
+
+		if (is_array($methods) === false) {
+			return 'Core::fieldMethods() no longer returns an array';
+		}
+
+		return isset($methods['toStructure']) ? null : 'toStructure is no longer camel cased';
 	}
 
-	// The whole reason the extensions copy is skipped: it is lowercased, and
-	// lowercase labels would be wrong to offer
-	return isset($methods['toStructure']) ? null : 'toStructure is no longer camel cased';
+	if (trait_exists(\Kirby\Content\FieldMethods::class) === false) {
+		return 'no Core::fieldMethods() and no FieldMethods trait, so the list has no source';
+	}
+
+	return method_exists(\Kirby\Content\Field::class, 'toStructure') === true
+		? null
+		: 'toStructure is not a method on Field';
 });
 
 check('a template with no blueprint of its own still resolves', function (): string|null {
