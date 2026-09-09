@@ -216,9 +216,10 @@ function argument(text, from) {
 	};
 }
 
-function scan(text) {
+function scan(text, functions = { snippet: false }) {
 	const found = [];
 	const stack = [];
+	const opener = callPattern(functions);
 	let calls = 0;
 	let i = 0;
 
@@ -268,14 +269,17 @@ function scan(text) {
 		}
 
 		if (char === "(") {
-			const before = text.slice(Math.max(0, i - 40), i);
+			const called = opener === null ? null : opener.exec(text.slice(Math.max(0, i - 40), i));
 
 			stack.push({
-				snippet: /(?:^|[^\w$>-])snippet\s*$/.test(before),
+				snippet: called !== null,
+				variadic: called !== null && functions[called[1]] === true,
 				call: calls++,
 				name: null,
 				key: null,
-				arg: 0
+				arg: 0,
+				expect: "key",
+				fresh: true
 			});
 
 			i++;
@@ -309,6 +313,30 @@ function scan(text) {
 		// name that is not a plain string leaves nothing to fall back on
 		if (char === "," && level?.call !== undefined) {
 			level.arg++;
+			level.key = null;
+			level.expect = "key";
+			level.fresh = true;
+
+			// An argument with nothing typed in it yet still has a name to
+			// offer, and no character of its own to be found at
+			if (level.variadic === true) {
+				let head = i + 1;
+
+				while (head < text.length && /[ \t]/.test(text[head]) === true) {
+					head++;
+				}
+
+				if (/[A-Za-z_]/.test(text[head] ?? "") === false) {
+					classify(text, level, stack, found, {
+						value: "",
+						literal: true,
+						start: head,
+						end: head,
+						closed: false,
+						quoted: false
+					});
+				}
+			}
 		}
 
 		if (level?.array === true) {
@@ -332,10 +360,72 @@ function scan(text) {
 			}
 		}
 
+		// Only at the head of an argument, so the `page` of `$page->foo()` is
+		// never read as a key
+		if (
+			level?.variadic === true &&
+			level.arg > 0 &&
+			level.fresh === true &&
+			/[A-Za-z_]/.test(char) === true
+		) {
+			let word = i;
+
+			while (word < text.length && /\w/.test(text[word]) === true) {
+				word++;
+			}
+
+			let after = word;
+
+			while (after < text.length && /[ \t]/.test(text[after]) === true) {
+				after++;
+			}
+
+			const named = text[after] === ":" && text[after + 1] !== ":";
+
+			level.fresh = false;
+
+			classify(text, level, stack, found, {
+				value: text.slice(i, word),
+				literal: true,
+				start: i,
+				end: word,
+				closed: named,
+				quoted: false
+			});
+
+			if (named === false) {
+				i = word;
+				continue;
+			}
+
+			level.key = text.slice(i, word);
+			level.expect = "value";
+			i = after + 1;
+			continue;
+		}
+
+		if (level?.call !== undefined && char !== "," && /\s/.test(char) === false) {
+			level.fresh = false;
+		}
+
 		i++;
 	}
 
 	return found;
+}
+
+/**
+ * The call openers to watch for, longest first. `:` is excluded alongside `$`
+ * and `->` because a one-letter helper makes `Str::s()` look like a call to it.
+ */
+function callPattern(functions) {
+	const names = Object.keys(functions)
+		.sort((a, b) => b.length - a.length)
+		.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+	return names.length === 0
+		? null
+		: new RegExp(`(?:^|[^\\w$>:-])(${names.join("|")})\\s*$`);
 }
 
 function classify(text, frame, stack, found, literal) {
@@ -349,7 +439,9 @@ function classify(text, frame, stack, found, literal) {
 			value: literal.value,
 			start: literal.start,
 			end: literal.end,
-			closed: literal.closed
+			closed: literal.closed,
+			quoted: literal.quoted !== false,
+			variadic: frame.variadic === true
 		});
 
 	// The first argument is the name, written either directly or as the first
@@ -374,6 +466,30 @@ function classify(text, frame, stack, found, literal) {
 		if (frame.name === null && literal.literal === true && whole === true) {
 			frame.name = literal.value;
 			emit("name");
+		}
+
+		return;
+	}
+
+	// A variadic wrapper's data is its named arguments, so an array reaching it
+	// is one value among them rather than the data itself
+	if (frame.variadic === true) {
+		if (level !== frame) {
+			return;
+		}
+
+		if (literal.quoted === false) {
+			emit("key");
+			return;
+		}
+
+		if (
+			frame.expect === "value" &&
+			literal.literal === true &&
+			/:\s*$/.test(text.slice(Math.max(0, literal.start - 40), literal.start)) === true
+		) {
+			emit("value", frame.key);
+			frame.expect = "done";
 		}
 
 		return;

@@ -89,6 +89,25 @@ return [
 ];
 ```
 
+## Short snippet helpers
+
+A project that wraps `snippet()` in a shorter helper is found on its own, with nothing to configure:
+
+```php
+function s($name, ...$data) {
+    return snippet($name, data: $data, return: true);
+}
+```
+
+Calls to it complete and check exactly as `snippet()` does, with the named arguments read as the snippet's parameters:
+
+```php
+s('button', variant: '…')   // filled, outlined, text
+s('button', labl: 'x')      // not a documented parameter
+```
+
+A function counts as a helper only where its own first argument is what it passes to `snippet()` as the name, so one that renders a snippet of its own choosing is left alone. Where a helper labels a call in the name itself, as `s('o:layout')` or `s('>layout')` for a slot, the label is ignored when resolving and kept when completing, renaming or opening the file.
+
 ## Documenting snippets
 
 ```php

@@ -49,6 +49,7 @@ const M = {
 	"header": snippet({}),
 	"blocks/recipes": { ...snippet({}), ignored: true },
 	},
+	functions: { snippet: false, s: true },
 };
 
 let pass = 0, fail = 0;
@@ -195,7 +196,12 @@ check("what the editor filters on always matches what it would replace", () => {
 		`<?php snippet('components/button', ['va|`,
 		`<?php snippet('components/button', ['va|riant' => 'filled']);`,
 		`<?php snippet('components/button', ['variant' => 'fil|`,
-		`<?php snippet('components/button', ['variant' => 'fil|led']);`
+		`<?php snippet('components/button', ['variant' => 'fil|led']);`,
+		`<?= s('comp|`,
+		`<?= s('o:comp|onents/button') ?>`,
+		`<?= s('components/button', va|`,
+		`<?= s('components/button', va|riant: 'filled') ?>`,
+		`<?= s('components/button', variant: 'fil|`
 	];
 
 	for (const source of cases) {
@@ -205,7 +211,7 @@ check("what the editor filters on always matches what it would replace", () => {
 		assert.ok(r.length > 0, `nothing offered for ${source}`);
 
 		const covered = text.slice(r[0].replace.start, r[0].replace.end);
-		const quote = covered[0];
+		const quote = /['"]/.test(covered[0]) === true ? covered[0] : "";
 
 		// Every item has to carry the quote, or the editor cannot match one
 		for (const item of r) {
@@ -1241,6 +1247,123 @@ check("every conversion names a real field method", () => {
 			assert.ok(known.has(method), `${type} maps to unknown ${method}`);
 		}
 	}
+});
+
+/* snippet wrappers */
+
+check("completes names inside a wrapper", () => {
+	assert.deepStrictEqual(labels(complete(`<?= s('`, M)),
+		["components/accordion", "components/button", "header"]);
+});
+
+check("a label is kept when completing the name it precedes", () => {
+	const items = complete(`<?= s('o:`, M);
+
+	assert.deepStrictEqual(items.map((item) => item.insert),
+		["'o:components/accordion'", "'o:components/button'", "'o:header'"]);
+});
+
+check("a labelled name resolves to the snippet it names", () => {
+	assert.deepStrictEqual(diagnose(`<?= s('o:header') ?><?= s('<header') ?>`, M), []);
+});
+
+check("a labelled name that misses is reported without its label", () => {
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('o:heade') ?>`, M)),
+		['Snippet "heade" not found. Did you mean "header"?']);
+});
+
+check("a real name beats stripping a label off it", () => {
+	assert.deepStrictEqual(diagnose(`<?php snippet('header');`, M), []);
+});
+
+check("cmd-click through a label points at the name", () => {
+	const text = `<?= s('o:header') ?>`;
+	const result = define(text, text.indexOf("header"), M);
+
+	assert.strictEqual(result.target, "header");
+	assert.strictEqual(text.slice(result.start, result.end), "header");
+});
+
+check("renaming through a label leaves the label alone", () => {
+	const text = `<?= s('o:header') ?>\n<?= s('<header') ?>\n<?php snippet('header');`;
+	const edits = renameEdits(text, "header", "top", M);
+
+	assert.strictEqual(edits.length, 3);
+
+	for (const edit of edits) {
+		assert.strictEqual(text.slice(edit.start, edit.end), "header");
+	}
+});
+
+check("completes a named argument as a pair without quotes", () => {
+	const items = complete(`<?= s('components/button', var`, M);
+	const insert = (label) => items.find((item) => item.label === label).insert;
+
+	// A listed value lands the cursor between the quotes, an open one after
+	assert.strictEqual(insert("variant"), "variant: '$0'");
+	assert.strictEqual(insert("label"), "label: $0");
+});
+
+check("offers the parameters of an argument with nothing typed in it", () => {
+	assert.deepStrictEqual(labels(complete(`<?= s('components/button', `, M)),
+		["label", "variant", "compact"]);
+});
+
+check("completes the values of a named argument", () => {
+	assert.deepStrictEqual(labels(complete(`<?= s('components/button', variant: '`, M)),
+		["filled", "outlined", "text"]);
+});
+
+check("checks a named argument's key and value", () => {
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('components/button', varaint: 'x') ?>`, M)),
+		['"varaint" is not a documented parameter of components/button.']);
+
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('components/button', variant: 'huge') ?>`, M)),
+		['"huge" is not a valid variant. Expected: filled, outlined, text.']);
+});
+
+check("a scalar check still applies to a named argument", () => {
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('components/button', compact: 'yes') ?>`, M)),
+		["compact expects bool|null, not a string."]);
+});
+
+check("reports a missing required parameter of a wrapper call", () => {
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('components/accordion', text: 'x') ?>`, M)),
+		["components/accordion is missing required: title."]);
+});
+
+check("a closing call passes nothing and is not missing anything", () => {
+	assert.deepStrictEqual(diagnose(`<?= s('c:components/accordion') ?>`, M), []);
+});
+
+check("the fix for a missing parameter writes a named argument", () => {
+	const text = `<?= s('components/accordion', text: 'x') ?>`;
+	const [fix] = fixes(text, text.indexOf("components/accordion"), M);
+
+	assert.strictEqual(fix.title, "Add missing: title");
+	assert.strictEqual(fix.edits[0].text, ", title: ''");
+});
+
+check("the fix for a labelled typo keeps the label", () => {
+	const text = `<?= s('o:heade') ?>`;
+	const [fix] = fixes(text, text.indexOf("heade"), M);
+
+	assert.strictEqual(fix.title, "Change to 'o:header'");
+	assert.strictEqual(fix.edits[0].text, "'o:header'");
+});
+
+check("an array handed to a wrapper is one value rather than the data", () => {
+	assert.deepStrictEqual(msgs(diagnose(`<?= s('components/button', opts: ['nope' => 'x']) ?>`, M)),
+		['"opts" is not a documented parameter of components/button.']);
+});
+
+check("snippet's own named arguments are never read as data", () => {
+	assert.deepStrictEqual(
+		diagnose(`<?php snippet('components/button', ['variant' => 'text'], return: true);`, M), []);
+});
+
+check("a positional argument is not read as a parameter", () => {
+	assert.deepStrictEqual(diagnose(`<?= s('components/button', $data) ?>`, M), []);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

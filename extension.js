@@ -442,7 +442,7 @@ const renames = {
 
 			const text = open?.getText() ?? Buffer.from(await vscode.workspace.fs.readFile(uri)).toString();
 
-			for (const change of renameEdits(text, result.target, name)) {
+			for (const change of renameEdits(text, result.target, name, manifest)) {
 				const positions = open ?? { positionAt: (o) => offsetToPosition(text, o) };
 
 				edit.replace(

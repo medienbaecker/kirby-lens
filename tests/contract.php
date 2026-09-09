@@ -276,6 +276,20 @@ check('a missing collection throws rather than returning null', function () use 
 	return 'collection() no longer throws, so that diagnostic should be a warning';
 });
 
+// A wrapper's named arguments are the snippet's data, and snippet()'s own are
+// these. Reading either as the other is what the variadic flag prevents.
+check('snippet() still names its own parameters', function (): string|null {
+	$expected = ['name', 'data', 'return', 'slots'];
+	$actual = array_map(
+		fn (\ReflectionParameter $parameter): string => $parameter->getName(),
+		(new \ReflectionFunction('snippet'))->getParameters()
+	);
+
+	return $actual === $expected
+		? null
+		: 'snippet() now takes ' . implode(', ', $actual);
+});
+
 echo "\n{$pass} passed" . ($fail > 0 ? ", {$fail} failed" : "") . "\n";
 
 exit($fail > 0 ? 1 : 0);

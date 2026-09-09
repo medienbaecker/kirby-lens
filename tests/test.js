@@ -304,5 +304,69 @@ check("closer word as a prefix does not close", () => {
 	assert.deepStrictEqual(scan(src).filter(l => l.kind === "value").map(v => v.value), ["a"]);
 });
 
+const S = { snippet: false, s: true, _s: true };
+
+check("a wrapper is a snippet call like any other", () => {
+	assert.deepStrictEqual(kinds(scan(`<?= s('components/button') ?>`, S)),
+		[["name", null, null, "components/button"]]);
+});
+
+check("a wrapper's named arguments are its data", () => {
+	assert.deepStrictEqual(kinds(scan(`<?= s('c/b', variant: 'text') ?>`, S)), [
+		["name", null, null, "c/b"],
+		["key", "c/b", null, "variant"],
+		["value", "c/b", "variant", "text"],
+	]);
+});
+
+// snippet() takes $name, $data, $return and $slots, so a named argument there
+// is one of its own rather than anything the snippet receives
+check("snippet's own named arguments are not data", () => {
+	const r = scan(`<?php snippet('c/b', ['variant' => 'text'], return: true);`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => l.value), ["variant"]);
+});
+
+check("an array reaching a wrapper is one value, not the data", () => {
+	const r = scan(`<?= s('c/b', opts: ['variant' => 'text'], icon: 'a') ?>`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => l.value), ["opts", "icon"]);
+});
+
+check("a receiver inside a named argument is not a key", () => {
+	const r = scan(`<?= s('c/b', label: $page->title(), icon: 'a') ?>`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => l.value), ["label", "icon"]);
+});
+
+check("a static call is not a key", () => {
+	const r = scan(`<?= s('c/b', label: Str::upper($x), icon: 'a') ?>`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => l.value), ["label", "icon"]);
+});
+
+check("a positional argument is left unclosed rather than checked", () => {
+	const r = scan(`<?= s('c/b', true) ?>`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => [l.value, l.closed]), [["true", false]]);
+});
+
+check("a key being typed carries no colon yet", () => {
+	const r = scan(`<?= s('c/b', vari`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => [l.value, l.closed]), [["vari", false]]);
+});
+
+check("an empty argument is a key with nothing in it", () => {
+	const r = scan(`<?= s('c/b', ) ?>`, S);
+	assert.deepStrictEqual(r.filter(l => l.kind === "key").map(l => [l.value, l.start]), [["", 13]]);
+});
+
+check("a one-letter wrapper does not swallow a static call", () => {
+	assert.deepStrictEqual(scan(`<?= Str::s('nope') ?>`, S), []);
+});
+
+check("a wrapper name is not read out of a longer one", () => {
+	assert.deepStrictEqual(scan(`<?= snippetAttributes($vars, 'nope') ?>`, S), []);
+});
+
+check("an unlisted function is not a snippet call", () => {
+	assert.deepStrictEqual(scan(`<?= s('c/b', variant: 'text') ?>`, { snippet: false }), []);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -162,5 +162,62 @@ if ($problem === null) {
 
 Dir::remove($dir);
 
+$project = sys_get_temp_dir() . '/lens-wrappers-' . getmypid();
+Dir::make($project . '/site/config');
+
+file_put_contents($project . '/site/config/helpers.php', <<<'PHP'
+<?php
+function lensShort($name, ...$data) {
+	return snippet($name, data: $data, return: true);
+}
+function lensLong($name, $data = []) {
+	return snippet($name, $data, true);
+}
+function lensPicksItsOwn($label, ...$rest) {
+	return snippet('components/card', $rest);
+}
+function lensRendersNothing($text, ...$filter) {
+	return strtoupper($text);
+}
+PHP);
+
+require $project . '/site/config/helpers.php';
+
+$wrappers = (new Manifest(new Kirby(['roots' => ['index' => $project]])))->functions();
+
+$verify = function (string $name, bool $ok) use (&$pass, &$fail): void {
+	if ($ok === true) {
+		$pass++;
+		echo "  ok   {$name}\n";
+		return;
+	}
+
+	$fail++;
+	echo "  FAIL {$name}\n";
+};
+
+$verify('finds a wrapper that hands its first parameter to snippet()',
+	array_key_exists('lensShort', $wrappers));
+
+$verify('a wrapper collecting named arguments carries its data in them',
+	($wrappers['lensShort'] ?? null) === true);
+
+$verify('a wrapper taking a data array does not',
+	($wrappers['lensLong'] ?? null) === false);
+
+$verify('a function that renders a snippet of its own choosing is not a wrapper',
+	array_key_exists('lensPicksItsOwn', $wrappers) === false);
+
+$verify('a variadic function that never reaches snippet() is not a wrapper',
+	array_key_exists('lensRendersNothing', $wrappers) === false);
+
+$verify('snippet itself is always a caller', ($wrappers['snippet'] ?? null) === false);
+
+$verify('a wrapper keeps the case it was declared with',
+	array_key_exists('lensShort', $wrappers) === true &&
+	array_key_exists('lensshort', $wrappers) === false);
+
+Dir::remove($project);
+
 echo "\n{$pass} passed, {$fail} failed\n";
 exit($fail > 0 ? 1 : 0);

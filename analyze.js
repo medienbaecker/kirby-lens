@@ -22,6 +22,39 @@ const fieldMap = (value) =>
 const snippetsOf = (manifest) => manifest.snippets ?? {};
 const snippetOf = (manifest, name) => snippetsOf(manifest)[name];
 const paramsOf = (manifest, name) => snippetOf(manifest, name)?.params;
+const functionsOf = (manifest) => manifest.functions ?? { snippet: false };
+
+// A wrapper may label a call in the name itself, as `s('o:layout')` or
+// `s('>layout')`. Stripping is a fallback, so a real name always wins
+const LABEL = /^(?:[<>]|[A-Za-z]:)/;
+
+function labelled(manifest, value) {
+	if (typeof value !== "string" || snippetOf(manifest, value) !== undefined) {
+		return { prefix: "", name: value };
+	}
+
+	const label = LABEL.exec(value);
+
+	return label === null
+		? { prefix: "", name: value }
+		: { prefix: label[0], name: value.slice(label[0].length) };
+}
+
+/**
+ * Every literal a file's snippet calls carry, with any label split off the
+ * name so everything downstream sees the name the manifest knows.
+ */
+function read(text, manifest) {
+	return scan(text, functionsOf(manifest)).map((literal) => {
+		if (literal.kind === "name") {
+			const { prefix, name } = labelled(manifest, literal.value);
+
+			return { ...literal, prefix, value: name };
+		}
+
+		return { ...literal, snippet: labelled(manifest, literal.snippet).name };
+	});
+}
 
 /**
  * `$`, `}` and `\` drive VS Code's snippet syntax, so anything inserted
@@ -54,6 +87,10 @@ const INJECTED = new Set([
  * Whether an offset sits within a literal's text, between its quotes.
  */
 function inside(literal, offset) {
+	if (literal.quoted === false) {
+		return offset >= literal.start && offset <= literal.end;
+	}
+
 	const last = literal.closed === true ? literal.end - 1 : literal.end;
 
 	return offset > literal.start && offset <= last;
@@ -83,7 +120,7 @@ function span(text, literal, offset) {
  * What to offer at a cursor offset, or nothing outside a `snippet()` string.
  */
 function complete(text, manifest, offset = text.length) {
-	const literals = scan(text);
+	const literals = read(text, manifest);
 	const open = literals.find((literal) => inside(literal, offset));
 
 	if (open === undefined) {
@@ -96,7 +133,9 @@ function complete(text, manifest, offset = text.length) {
 		return [];
 	}
 
-	const quote = text[open.start] === '"' ? '"' : "'";
+	// A named argument's key is written in code rather than in a string
+	const bare = open.quoted === false;
+	const quote = bare === true ? "" : text[open.start] === '"' ? '"' : "'";
 	const quoted = (value) => quote + literally(encode(value, quote)) + quote;
 
 	// Setting a range makes VS Code filter on the text that range covers, quotes
@@ -116,8 +155,8 @@ function complete(text, manifest, offset = text.length) {
 				detail: snippetOf(manifest, name).summary || summarise(paramsOf(manifest, name)),
 				documentation: "",
 				replace,
-				insert: quoted(name),
-				filter: filtered(name),
+				insert: quoted(open.prefix + name),
+				filter: filtered(open.prefix + name),
 				sort: lead(name)
 			}));
 	}
@@ -137,7 +176,11 @@ function complete(text, manifest, offset = text.length) {
 
 		// Completing over a key that already has a value must not write a second
 		// arrow, so the pair is only ever completed where none exists yet
-		const paired = /^\s*=>/.test(text.slice(open.end, open.end + 40));
+		const pair = bare === true ? ": " : " => ";
+		const held = bare === true ? "'" : quote;
+		const paired = (bare === true ? /^\s*:(?!:)/ : /^\s*=>/).test(
+			text.slice(open.end, open.end + 40)
+		);
 
 		return Object.entries(params)
 			.filter(([name, param]) => used.has(name) === false && param.injected !== true)
@@ -157,8 +200,8 @@ function complete(text, manifest, offset = text.length) {
 						? quoted(name)
 						: listed
 							// Landing between the quotes, where the value list applies
-							? `${quoted(name)} => ${quote}$0${quote}`
-							: `${quoted(name)} => $0`,
+							? `${quoted(name)}${pair}${held}$0${held}`
+							: `${quoted(name)}${pair}$0`,
 					retrigger: paired === false && listed,
 					preselect: param.required === true
 				};
@@ -190,7 +233,7 @@ function documents(params) {
 }
 
 function diagnose(text, manifest) {
-	const literals = scan(text);
+	const literals = read(text, manifest);
 	const found = [];
 	const known = snippetsOf(manifest);
 
@@ -293,7 +336,7 @@ function missingRequired(literals, manifest) {
 			call.end = literal.end;
 		}
 
-		if (literal.kind === "key") {
+		if (literal.kind === "key" && literal.closed === true) {
 			call.keys.add(literal.value);
 		}
 	}
@@ -415,7 +458,7 @@ function typeFixes(text, offset) {
 }
 
 function snippetFixes(text, offset, manifest) {
-	const literals = scan(text);
+	const literals = read(text, manifest);
 	const at = literals.find(
 		(literal) => offset >= literal.start && offset <= literal.end
 	);
@@ -425,9 +468,12 @@ function snippetFixes(text, offset, manifest) {
 	}
 
 	const params = paramsOf(manifest, at.snippet);
-	const quote = text[at.start] === '"' ? '"' : "'";
+	const bare = at.quoted === false;
+	const quote = bare === true ? "" : text[at.start] === '"' ? '"' : "'";
 	const quoted = (value) => quote + encode(value, quote) + quote;
-	const replace = (value) => [{ start: at.start, end: at.end, text: quoted(value) }];
+	const replace = (value) => [
+		{ start: at.start, end: at.end, text: quoted((at.prefix ?? "") + value) }
+	];
 
 	if (at.kind === "name") {
 		if (snippetOf(manifest, at.value) === undefined) {
@@ -438,7 +484,7 @@ function snippetFixes(text, offset, manifest) {
 				// a likelier reading than a new snippet named almost the same
 				...(meant === null
 					? []
-					: [{ title: `Change to ${quoted(meant)}`, edits: replace(meant) }]),
+					: [{ title: `Change to ${quoted(at.prefix + meant)}`, edits: replace(meant) }]),
 				// A fix that creates a file has to refuse a name that could land
 				// outside the snippets root, and `snippet('../../x')` is one
 				...(NAMEABLE.test(at.value) === true
@@ -465,7 +511,13 @@ function snippetFixes(text, offset, manifest) {
 					{
 						start: last,
 						end: last,
-						text: missing.map((name) => `, ${quoted(name)} => ${quote}${quote}`).join("")
+						text: missing
+							.map((name) =>
+								at.variadic === true
+									? `, ${name}: ''`
+									: `, ${quoted(name)} => ${quote}${quote}`
+							)
+							.join("")
 					}
 				]
 			}
@@ -522,20 +574,27 @@ function missingFor(manifest, snippet, passed) {
 const keysOf = (literals, call) =>
 	new Set(
 		literals
-			.filter((literal) => literal.kind === "key" && literal.call === call)
+			.filter(
+				(literal) =>
+					literal.kind === "key" && literal.closed === true && literal.call === call
+			)
 			.map((literal) => literal.value)
 	);
 
 /**
  * Every place one file spells a snippet name, as edits that rewrite it.
  */
-function renameEdits(text, from, to) {
-	return scan(text)
+function renameEdits(text, from, to, manifest = {}) {
+	return read(text, manifest)
 		.filter(
 			(literal) =>
 				literal.kind === "name" && literal.closed === true && literal.value === from
 		)
-		.map((literal) => ({ start: literal.start + 1, end: literal.end - 1, text: to }));
+		.map((literal) => ({
+			start: literal.start + 1 + literal.prefix.length,
+			end: literal.end - 1,
+			text: to
+		}));
 }
 
 /**
@@ -593,7 +652,7 @@ function describe(name, entry) {
 }
 
 function hover(text, offset, manifest) {
-	for (const literal of scan(text)) {
+	for (const literal of read(text, manifest)) {
 		if (offset < literal.start || offset > literal.end) {
 			continue;
 		}
@@ -638,7 +697,7 @@ function hover(text, offset, manifest) {
  * root.
  */
 function define(text, offset, manifest) {
-	for (const literal of scan(text)) {
+	for (const literal of read(text, manifest)) {
 		if (literal.kind !== "name" || offset < literal.start || offset > literal.end) {
 			continue;
 		}
@@ -650,7 +709,7 @@ function define(text, offset, manifest) {
 		// Inside the quotes, so the clickable range sits on the name itself
 		return {
 			target: literal.value,
-			start: literal.start + 1,
+			start: literal.start + 1 + literal.prefix.length,
 			end: literal.end - 1
 		};
 	}
