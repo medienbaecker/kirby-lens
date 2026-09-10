@@ -58,7 +58,7 @@ Problems appear for the files you have open. For everything at once, run **Kirby
 Not on the Marketplace yet. Download the `.vsix` from the [latest release](https://github.com/medienbaecker/kirby-lens/releases/latest) and either drag it onto the Extensions view, or:
 
 ```sh
-code --install-extension kirby-lens-0.1.36.vsix
+code --install-extension kirby-lens-0.1.37.vsix
 ```
 
 It needs `php` on the `PATH` VS Code inherits. If it isn't, point `kirbyLens.php` at it.

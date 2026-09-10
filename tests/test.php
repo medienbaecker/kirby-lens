@@ -8,6 +8,7 @@
  */
 
 use Kirby\Filesystem\Dir;
+use Kirby\Cms\App;
 use Medienbaecker\KirbyLens\Manifest;
 
 $index = null;
@@ -39,7 +40,7 @@ require dirname(__DIR__) . '/php/Manifest.php';
 
 $dir = sys_get_temp_dir() . '/lens-test-' . getmypid();
 Dir::make($dir);
-$kirby = new Kirby(['roots' => ['index' => $index, 'snippets' => $dir]]);
+$kirby = new App(['roots' => ['index' => $index, 'snippets' => $dir]]);
 
 $pass = 0;
 $fail = 0;
@@ -183,7 +184,7 @@ PHP);
 
 require $project . '/site/config/helpers.php';
 
-$wrappers = (new Manifest(new Kirby(['roots' => ['index' => $project]])))->functions();
+$wrappers = (new Manifest(new App(['roots' => ['index' => $project]])))->functions();
 
 $verify = function (string $name, bool $ok) use (&$pass, &$fail): void {
 	if ($ok === true) {

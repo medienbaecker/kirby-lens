@@ -14,6 +14,7 @@
  * php tests/contract.php [project-root]
  */
 
+use Kirby\Cms\App;
 use Medienbaecker\KirbyLens\Manifest;
 
 $index = null;
@@ -41,7 +42,7 @@ require $bootstrap;
 require dirname(__DIR__) . '/php/Type.php';
 require dirname(__DIR__) . '/php/Manifest.php';
 
-$kirby = new Kirby(['roots' => ['index' => $index]]);
+$kirby = new App(['roots' => ['index' => $index]]);
 $constants = (new ReflectionClass(Manifest::class))->getConstants();
 
 $pass = 0;
