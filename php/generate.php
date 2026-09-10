@@ -39,7 +39,16 @@ if ($bootstrap === null) {
 $_ENV['KIRBY_RENDER'] = false;
 
 require $bootstrap;
+
+if (!class_exists('Kirby\Cms\App')) {
+	$autoload = $root . '/vendor/autoload.php';
+	if (! is_file($bootstrap)) {
+		fwrite(STDERR, "Not a Kirby project: no Kirby found in {$root}\n");
+		exit(2);
+	}
+}
+
 require __DIR__ . '/Type.php';
 require __DIR__ . '/Manifest.php';
 
-echo (new Manifest(new Kirby(['roots' => ['index' => $root]])))->write($out) . PHP_EOL;
+echo (new Manifest(new Kirby\Cms\App(['roots' => ['index' => $root]])))->write($out) . PHP_EOL;
