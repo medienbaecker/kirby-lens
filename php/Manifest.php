@@ -717,9 +717,15 @@ final readonly class Manifest
 
 		foreach ($this->phpFiles($root) as $path) {
 			// A representation sits beside its template as `feed.rss.php`, and
-			// `scandir` sorts `feed.php` ahead of it
-			$name = substr($path, 0, -4);
-			$found[strstr($name, '.', true) ?: $name] ??= $root . '/' . $path;
+			// stands in only for a template that has no file of its own
+			$name           = substr($path, 0, -4);
+			$representation = strstr($name, '.', true);
+
+			if ($representation === false) {
+				$found[$name] = $root . '/' . $path;
+			} else {
+				$found[$representation] ??= $root . '/' . $path;
+			}
 		}
 
 		foreach ($this->kirby->extensions('templates') as $name => $path) {
