@@ -25,7 +25,7 @@ const check = (name, fn) => {
 	}
 };
 
-function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
+function activateWith(manifest, { root = KIRBY, fail = null, hold = false } = {}) {
 	const seen = {
 		completion: [],
 		hover: 0,
@@ -38,7 +38,10 @@ function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
 		warnings: [],
 		asked: [],
 		commands: 0,
-		registered: []
+		registered: [],
+		changes: [],
+		runs: 0,
+		pending: []
 	};
 	const noop = () => ({ dispose() {} });
 
@@ -81,7 +84,12 @@ function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
 			],
 			createFileSystemWatcher: () => {
 				seen.watchers++;
-				return { onDidChange: noop, onDidCreate: noop, onDidDelete: noop, dispose() {} };
+				return {
+					onDidChange: (handler) => seen.changes.push(handler),
+					onDidCreate: noop,
+					onDidDelete: noop,
+					dispose() {}
+				};
 			},
 			onDidOpenTextDocument: noop,
 			onDidChangeTextDocument: noop,
@@ -145,7 +153,15 @@ function activateWith(manifest, { root = KIRBY, fail = null } = {}) {
 	const childProcess = {
 		execFile: (file, args, options, callback) => {
 			seen.command = [file, ...args].join(" ");
-			callback(fail, "", fail === null ? "" : "boom");
+			seen.runs++;
+
+			const finish = () => callback(fail, "", fail === null ? "" : "boom");
+
+			if (hold === true) {
+				seen.pending.push(finish);
+			} else {
+				finish();
+			}
 		}
 	};
 
@@ -206,7 +222,7 @@ check("activates with the manifest missing, and rebuilds it", () => {
 	assert.strictEqual(seen.completion.length, 1);
 
 	// The bundled generator, given the project root and where to write
-	assert.match(seen.command, /^php \S+\/php\/generate\.php \S+ \S+$/, seen.command);
+	assert.match(seen.command, /^php -d memory_limit=512M \S+\/php\/generate\.php \S+ \S+$/, seen.command);
 	assert.deepStrictEqual(seen.warnings, []);
 });
 
@@ -234,4 +250,32 @@ check("exports activate and deactivate", () => {
 	assert.strictEqual(typeof extension.deactivate, "function");
 });
 
-console.log(`\n${pass} passed`);
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+(async () => {
+	const { seen } = activateWith(MISSING, { hold: true });
+
+	for (let i = 0; i < 2; i++) {
+		seen.changes.forEach((change) => change());
+		await wait(250);
+	}
+
+	check("runs one generator at a time, whatever changes meanwhile", () => {
+		assert.strictEqual(seen.runs, 1);
+	});
+
+	seen.pending.shift()();
+
+	check("runs once more after a run that saw changes", () => {
+		assert.strictEqual(seen.runs, 2);
+	});
+
+	seen.pending.shift()();
+	await wait(250);
+
+	check("stops once nothing changed during the last run", () => {
+		assert.strictEqual(seen.runs, 2);
+	});
+
+	console.log(`\n${pass} passed`);
+})();

@@ -314,27 +314,6 @@ final readonly class Manifest
 	 * the real structure beside it, which is hand-written and carries `footer`
 	 * on its first row only. Panel-less content is not uniform.
 	 */
-	/**
-	 * Relative paths of the real PHP files under a root.
-	 *
-	 * `Dir::index` lists directories as well, and an extension check does not
-	 * tell them apart: Composer's `scrivo/highlight.php` is a package, so
-	 * `vendor/scrivo/highlight.php` is a directory that passes for a PHP file
-	 * and then fails the read with "Is a directory".
-	 */
-	private function phpFiles(string $root): array
-	{
-		$found = [];
-
-		foreach (Dir::index($root, true) as $path) {
-			if (F::extension($path) === 'php' && is_file($root . '/' . $path) === true) {
-				$found[] = $path;
-			}
-		}
-
-		return $found;
-	}
-
 	private function structural(): array
 	{
 		$found = [];
@@ -358,6 +337,41 @@ final readonly class Manifest
 				}
 			}
 		}
+
+		return $found;
+	}
+
+	/**
+	 * Relative paths of the real PHP files under a root. Each real directory is
+	 * walked once, so a symlink cycle ends, and `node_modules` is skipped. A
+	 * directory can be named like a PHP file (`vendor/scrivo/highlight.php`).
+	 */
+	private function phpFiles(string $root): array
+	{
+		$found = [];
+		$seen  = [];
+
+		$walk = function (string $dir, string $prefix) use (&$walk, &$found, &$seen): void {
+			$real = realpath($dir);
+
+			if ($real === false || isset($seen[$real]) === true) {
+				return;
+			}
+
+			$seen[$real] = true;
+
+			foreach (Dir::read($dir) as $item) {
+				if (is_dir($dir . '/' . $item) === true) {
+					if ($item !== 'node_modules') {
+						$walk($dir . '/' . $item, $prefix . $item . '/');
+					}
+				} elseif (F::extension($item) === 'php' && is_file($dir . '/' . $item) === true) {
+					$found[] = $prefix . $item;
+				}
+			}
+		};
+
+		$walk($root, '');
 
 		return $found;
 	}
@@ -703,7 +717,7 @@ final readonly class Manifest
 
 		foreach ($this->phpFiles($root) as $path) {
 			// A representation sits beside its template as `feed.rss.php`, and
-			// `Dir::index` sorts `feed.php` ahead of it
+			// `scandir` sorts `feed.php` ahead of it
 			$name = substr($path, 0, -4);
 			$found[strstr($name, '.', true) ?: $name] ??= $root . '/' . $path;
 		}

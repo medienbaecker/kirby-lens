@@ -125,9 +125,13 @@ function warn(error, stderr) {
 	);
 }
 
+let running = false;
+let again = false;
+
 /**
  * The generator ships with the extension and boots the project's own Kirby,
- * so nothing has to be installed into the project.
+ * so nothing has to be installed into the project. One run at a time: a change
+ * during a run queues exactly one more.
  */
 function regenerate(done) {
 	const root = workspaceRoot();
@@ -136,10 +140,25 @@ function regenerate(done) {
 		return;
 	}
 
+	if (running === true) {
+		again = true;
+		return;
+	}
+
+	running = true;
+
 	const script = path.join(__dirname, "php/generate.php");
 	const target = manifestPath();
+	const args = ["-d", "memory_limit=512M", script, root, target];
 
-	execFile(config("php"), [script, root, target], { cwd: root }, (error, stdout, stderr) => {
+	execFile(config("php"), args, { cwd: root }, (error, stdout, stderr) => {
+		running = false;
+
+		if (again === true) {
+			again = false;
+			regenerate(done);
+		}
+
 		if (error) {
 			warn(error, stderr);
 			return;
